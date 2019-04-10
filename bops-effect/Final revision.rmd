@@ -1,0 +1,894 @@
+---
+title: "Final Project: BOPS"
+author: "SHIWEN E, FRANCES (IN-HSIN) WONG, YUHE REN, XUAN WANG, ERIK CHU"
+date: "November 29, 2018"
+output: word_document
+---
+
+#==========================================================
+## SET UP R MARKDOWN
+#==========================================================
+```{r}
+# clear the working space at the start of every R session
+rm(list = ls())
+# Set directory
+setwd("~/Documents/R/BOPS")
+
+library(stargazer)
+library(gdata)
+library(ggplot2)
+library(readstata13)
+library(VIF)
+library(psych) 
+library(ggeffects)
+library(QuantPsyc)
+library(lmtest)
+library(usdm)
+library(multiwayvcov)
+library(sandwich)
+library(foreign)
+library(AER)
+library(MASS)
+library(mfx)
+library(aod)
+library(Rcpp)
+library(nnet)
+library(reshape2)
+
+# turn off scientific notation except for big numbers. 
+options(scipen = 9)
+```
+#==========================================================
+## Load data for Q1 and Q2
+#==========================================================
+```{r}
+mydata <- read.dta13("online daily sales-returns data.dta")
+```
+#==========================================================
+## Reorgainze, Subset and correct data for Q1 and Q2
+#==========================================================
+```{r}
+# Subset database for the specific research question 1, Date from Aug 1st 2010 to Sep 26th 2012
+mydata_selected <- subset(mydata, day<788)
+
+#Check if there is missing data
+stargazer(mydata_selected,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+
+#fill the NA (Missing values) in each column with the mean values
+mydata_selected$avg_female[which(is.na(mydata_selected$avg_female))] <- mean(mydata_selected$avg_female,na.rm=TRUE)
+mydata_selected$avg_age[which(is.na(mydata_selected$avg_age))] <- mean(mydata_selected$avg_age,na.rm=TRUE)
+mydata_selected$avg_income[which(is.na(mydata_selected$avg_income))] <- mean(mydata_selected$avg_income,na.rm=TRUE)
+mydata_selected$avg_childowner[which(is.na(mydata_selected$avg_childowner))] <- mean(mydata_selected$avg_childowner,na.rm=TRUE)
+
+#Create dummy variable for stores >>> store 2&6: D=1; store 5998: D=0
+mydata_selected$store_dummy <- 1
+mydata_selected$store_dummy[which(mydata_selected$store_number == 5998)] <- 0
+
+#Create dummy variable for BIE time >>> before Aug 1st 2011 = 0; after Aug 1st 2011 = 1
+mydata_selected$time_BIE_dummy <- 0
+mydata_selected$time_BIE_dummy[which(mydata_selected$day>365)] <- 1
+
+#Create factor variable for month_dummy
+ggplot(mydata_selected,aes(x=month_dummy)) + geom_histogram(colour="green")
+is.factor(mydata_selected$month_dummy)
+mydata_selected$month_factor <- factor(mydata_selected$month_dummy, levels = c("8","1","2","3","4","5","6","7","9","10","11","12"))
+is.factor(mydata_selected$month_factor)
+
+
+#Plot dependent variable Salesvalue
+ggplot(mydata_selected,aes(x=salesvalue)) + geom_histogram(colour="green")
+
+#Convert dependent variable sales amount($ value) into log scale. Because there is 0 in sales,all sales values are added 1 and then transformed in to log scale
+mydata_selected$salesvalue_modified <- mydata_selected$salesvalue + 1
+mydata_selected$logsale <- log(mydata_selected$salesvalue_modified)
+stargazer(mydata_selected,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+ggplot(mydata_selected,aes(x=logsale)) + geom_histogram(colour="green")
+
+#------------------------------------------------------------------------------------------------
+#Added values for Q2
+#Plot dependent variable ReturnValue
+ggplot(mydata_selected,aes(x=returnvalue)) + geom_histogram(colour="green")
+
+#Plot log(return). Because there is 0 in returns,all return values are added 1 and then transformed in to log scale
+mydata_selected$returnvalue_modified <- mydata_selected$returnvalue + 1
+mydata_selected$logreturn <- log(mydata_selected$returnvalue_modified)
+stargazer(mydata_selected,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+ggplot(mydata_selected,aes(x=logreturn)) + geom_histogram(colour="green")
+
+#Check multicolinearity, no found
+df=mydata_selected[c("store_dummy","time_BIE_dummy","avg_female","avg_age","avg_income","avg_homeowner","avg_residency","avg_childowner")]
+stargazer(df,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+cor(df)
+vifcor(df)
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## OLS Model Q1
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+Model1=lm(log(salesvalue+1)~ time_BIE_dummy*store_dummy + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected)
+
+stargazer(Model1, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-1"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001),single.row=TRUE, align=TRUE) 
+
+#Check heteroscedasticity
+gqtest(Model1) # Significant then heteroscedasticity
+bptest(Model1) # Insignificant
+
+HWrobstder <- sqrt(diag(vcovHC(Model1, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model1, Model1,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001),single.row=TRUE, align=TRUE)  # displays normal/HW robust standard errors.
+
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Count sales model for sales quantity Q1
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+#Poisson
+poisson1 <- glm(salesquantity~ time_BIE_dummy*store_dummy + month_factor + avg_female + avg_age + avg_income + avg_childowner,family = "poisson", data = mydata_selected )
+
+stargazer(poisson1, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Poisson1"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Poisson model fit test
+poisson1a <- glm(salesquantity ~ 1, data = mydata_selected)
+lrtest(poisson1, poisson1a) #Significant, then model fit
+
+#Check heteroscedasticity
+gqtest(poisson1)
+bptest(poisson1)
+
+HWrobstder <- sqrt(diag(vcovHC(poisson1, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(poisson1, poisson1,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Negative Binormial model
+negbin1 <- glm.nb(salesquantity~ time_BIE_dummy*store_dummy + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected)
+
+stargazer(negbin1, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-negbin1"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#NB model fit test
+negbin1a <- glm.nb(salesquantity ~ 1, data = mydata_selected)
+lrtest(negbin1, negbin1a) #significant, then model fit
+
+#Compare Poisson model and NB model, significant, then choose NB model
+lrtest(poisson1, negbin1)
+
+#Check heteroscedasticity
+gqtest(negbin1) #insignificant
+bptest(negbin1) #significant, then heteoscedasticity
+
+HWrobstder <- sqrt(diag(vcovHC(negbin1, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(negbin1, negbin1,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Obtain IRR
+stargazer(negbin1, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results negbin1", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001),single.row=TRUE, align=TRUE)
+
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## OLS Model Q2
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+#Check multicolinearity, no found
+df2=mydata_selected[c("store_dummy","time_BIE_dummy","avg_female","avg_age","avg_income","avg_homeowner","avg_childowner","salesvalue")]
+stargazer(df,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+cor(df2)
+vifcor(df2)
+
+Model2=lm(log(returnvalue + 1) ~ time_BIE_dummy*store_dummy + logsale +month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected)
+
+stargazer(Model2, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-2"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Check heteroscedasticity
+gqtest(Model2) # Significant then heteroscedasticity
+bptest(Model2) # Insignificant
+
+HWrobstder <- sqrt(diag(vcovHC(Model2, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model2, Model2,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001),single.row=TRUE, align=TRUE)  # displays normal/HW robust standard errors.
+
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Count return model for sales quantity Q2
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+#Poisson
+poisson2 <- glm(returnquantity ~ time_BIE_dummy*store_dummy + salesquantity + month_factor + avg_female + avg_age + avg_income + avg_childowner,family = "poisson", data = mydata_selected )
+
+stargazer(poisson2, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Poisson2"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+
+#Poisson model fit test
+poisson2a <- glm(returnquantity ~ 1, data = mydata_selected)
+lrtest(poisson2, poisson2a) #Significant, then model fit
+
+#Check heteroscedasticity
+gqtest(poisson2)
+bptest(poisson2)
+
+HWrobstder <- sqrt(diag(vcovHC(poisson2, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(poisson2, poisson2,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Negative Binormial model
+negbin2 <- glm.nb(returnquantity~ time_BIE_dummy*store_dummy + salesquantity +month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected)
+
+stargazer(negbin2, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-negbin2"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#NB model fit test
+negbin2a <- glm.nb(returnquantity ~ 1, data = mydata_selected)
+lrtest(negbin2, negbin2a) #significant, then model fit
+
+#Compare Poisson model and NB model, significant, then choose NB model
+lrtest(poisson2, negbin2)
+
+#Check heteroscedasticity
+gqtest(negbin2) #insignificant
+bptest(negbin2) #significant, then heteoscedasticity
+
+HWrobstder <- sqrt(diag(vcovHC(negbin2, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(negbin2, negbin2,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Obtain IRR
+stargazer(negbin2, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001),single.row=TRUE, align=TRUE)
+```
+#==========================================================
+## READ AND EXPLORE DATA Q3
+#==========================================================
+```{r}
+mydata3 <- read.dta13("consumer level data.dta")
+
+## Summary statistics
+stargazer(mydata3, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics") 
+ggplot(mydata3, aes(x=salesvalue)) + geom_histogram(colour="green", bins = 200) 
+
+ggplot(mydata3, aes(x=log(salesvalue))) + geom_histogram(colour="green") 
+
+ggplot(mydata3, aes(x=salesquantity)) + geom_histogram(colour="green", stat = "count", bins = 200)
+
+mydata3$lnsalesvalue<-log(mydata3$salesvalue)
+mydata3$lnsalesquantity<-log(mydata3$salesquantity)
+
+#create dummy variables
+mydata3$homeowner<-ifelse(mydata3$homeowner_code=="O",1,0)
+mydata3$havechild<-ifelse(mydata3$child=="Y",1,0)
+
+factor(mydata3$age_band)
+factor(mydata3$est_income_code)
+#deal with missing values
+
+mydata3$salesvalue[which(is.na(mydata3$salesvalue))] <- mean(mydata3$salesvalue, na.rm = T)
+mydata3$age_band[which(is.na(mydata3$age_band))] <- median(mydata3$age_band, na.rm = T)
+mydata3$est_income_code[which(is.na(mydata3$est_income_code))] <- median(mydata3$est_income_code, na.rm = T)
+mydata3$homeowner[which(is.na(mydata3$homeowner))] <- median(mydata3$homeowner, na.rm = T)
+mydata3$female[which(is.na(mydata3$female))] <- median(mydata3$female, na.rm = T)
+
+
+```
+#==========================================================
+## BUILD-UP MODEL FOR SALES VALUE Q3
+#==========================================================
+```{r}
+## MulticollinearyPlot the data
+df=data.frame(mydata3$bops_user,mydata3$age_band,mydata3$est_income_code,mydata3$homeowner,mydata3$havechild)
+
+cor(df) # Generates the correlation matrix
+vifcor(df) # Calculates VIF scores . All VIFs are less than 3, indicating there is no multicollinearity in the dataset
+
+OLS31 = lm(log(salesvalue+1)~bops_in_effect:bops_user+age_band+est_income_code+havechild+bops_user+bops_in_effect+purchase_time_period , data=mydata3) 
+stargazer(OLS31, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model3-1"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+##Test heteroscedasticity
+
+pred<-predict(OLS31) #obtain fitted values
+res=resid(OLS31) # obtain residuals
+
+ggplot(df, aes(y=res, x=pred)) + geom_point(size=2.5) # Let's check heteroscedasticity visually first. Residuals do not demonstrate any visible pattern.
+
+gqtest(OLS31) # Goldfeld-Quandt test is  significant, implying there is heteroscedasticity
+
+bptest(OLS31) # Breusch-Pagan test is not significant, implying no heteroscedasticity
+
+consstder <- sqrt(diag(vcovHC(OLS31, type="const"))) # produces normal standard errors
+HWrobstder <- sqrt(diag(vcovHC(OLS31, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(OLS31, OLS31,  
+          se=list(consstder, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))  # still significant 
+
+meffects3 <- ggpredict(OLS31, terms=c("bops_in_effect","bops_user")) # generates a tidy data frame  
+
+ggplot(meffects3,aes(x, predicted, colour=group)) + geom_line(size=1.3) + 
+    xlab("BIE") + ylab("Sales ($)") +
+    scale_colour_discrete(labels=c("Consumer not using BOPS", "Consumer using BOPS")) +
+    scale_x_continuous(breaks=c(0,1), labels=c("bops_haven't_in_effect", "bops_in_effect")) +
+    theme(axis.title.x=element_blank()) # make the plot more self-readable
+
+```
+#==========================================================
+## BUILD-UP MODEL FOR SALES QUANTITY Q3
+#==========================================================
+```{r}
+poisson31 <- glm(salesquantity ~ bops_in_effect:bops_user+ age_band+est_income_code+havechild+bops_user+bops_in_effect+purchase_time_period,family="poisson", data=mydata3)
+
+stargazer(poisson31,  
+          title="Regression Results", type="text", 
+          column.labels=c("Poisson Model3-1"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+## Model fit assessment 
+poisson31a <- glm(salesquantity~1, data=mydata3, family="poisson") # This is the command to run a logit on null model 
+
+lrtest(poisson31, poisson31a) # We can use the residual deviance to perform a goodness of fit test for the overall model. The residual deviance is the difference between the deviance of the current model and the maximum deviance of the ideal model where the predicted values are identical to the observed. Therefore, if the residual difference is small enough, the goodness of fit test will not be significant, indicating that the model fits the data. We conclude that the model does not fit because the goodness-of-fit chi-squared test is statistically significant. If the test had not been statistically significant, it would indicate that the data fit the model well.
+
+poisson31b <- update(poisson31, . ~ . - bops_user:bops_in_effect) #We can also test the overall effect of facebookvisit by comparing the deviance of the full model with the deviance of the model excluding facbookvisit. 
+
+anova(poisson31b, poisson31, test="Chisq") #The two degree-of-freedom chi-square test indicates that channel, taken together, is a statistically significant predictor of purchase quantity. 
+
+
+stargazer(poisson31, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001)) # Let's obtain IRRs. 
+```
+#==========================================================
+## DEVELOP NEGATIVE BINOMIAL REGRESSION MODEL Q3
+#==========================================================
+```{r}
+negbin31 <- glm.nb(salesquantity ~ bops_in_effect:bops_user+ age_band+est_income_code+havechild+bops_user+bops_in_effect+purchase_time_period, data = mydata3)
+
+stargazer(negbin31,  
+          title="Regression Results", type="text", 
+          column.labels=c("Negative Binomial Model 3-1"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001))# The variable facebookvisit has a coefficient of 0.08, which is statistically significant. This means that the expected log count of purchases for customers who visit Facebook before shopping at Amazon.com is 0.08 more than that for customers who visit Amazon.com directly. 
+
+# Model fit assessment
+negbin31a <- glm.nb(salesquantity ~ 1, data = mydata3) 
+
+lrtest(negbin31, negbin31a) # # Model fits the data because LR test statistics is significant.
+
+# Test for heteroscedasticity
+gqtest(negbin31) # Goldfeld-Quandt test is not significant, hence there is no heteroscedasticity 
+bptest(negbin31) # Significant Breusch-Pagan test indicates heteroscedasticity! Therefore, we need to provide robust standard errors.
+
+HWrobstder <- sqrt(diag(vcovHC(negbin31, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(negbin31, negbin31,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001))  # The significance levels do not change with robust standard errors.
+
+# Generate IRRs from Negative Binomial regression
+stargazer(negbin31, poisson31, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="IRR Comparison", type="text", 
+          column.labels=c("Neg. Binomial", "Poisson"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+# Choosing between Poisson and Negative Binomial regressions
+
+lrtest(poisson31, negbin31) # The significant chi-square test suggests the negative binomial model is more appropriate than the poisson model. It also indicates the data is overdispersed.
+```
+#==========================================================
+## Load data Q4
+#==========================================================
+```{r}
+transaction = read.dta13 ("transaction level data.dta")
+
+#subset data after Sep 2012 when bops is implemented for all stores
+transaction2=transaction[transaction$month_index>38, ]
+
+#check if there is missing data
+stargazer(transaction2, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+
+#fill in missing datas with mean/median values
+transaction2$age_band[is.na(transaction2$age_band)] <- mean(transaction2$age_band, na.rm=TRUE)
+transaction2$est_income_code[is.na(transaction2$est_income_code)] <- mean(transaction2$est_income_code, na.rm=TRUE)
+transaction2$length_of_residence[is.na(transaction2$length_of_residence)] <- mean(transaction2$length_of_residence, na.rm=TRUE)
+transaction2$female[is.na(transaction2$female)] <- mean(transaction2$female, na.rm=TRUE)
+transaction2$product_category[is.na(transaction2$product_category)] <- median(transaction2$product_category, na.rm=TRUE)
+
+#check if data set is completed
+stargazer(transaction2, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics") 
+
+```
+#==========================================================
+## Modeling for Q4
+#==========================================================
+```{r}
+# factor variables with dummy variable approach 
+#--------------------------------------------------
+#create dummy variables for child
+transaction2$child=ifelse(transaction2$child=="Y",1,0) # We generate a dummy variable for chid
+
+#create factor variable for product_category
+is.factor(transaction2$product_category)
+table(transaction2$product_category) # Since most of the observations are form category 5, we will use prod category 5 as our reference category
+transaction2$factor_prodcat <- as.factor(transaction2$product_category)
+transaction2$factor_monthdummy <- as.factor(transaction2$month_dummy)
+
+# Check Multicollineary
+df <- data.frame(transaction2$return,transaction2$price,transaction2$age_band,transaction2$est_income_code,transaction2$length_of_residence,transaction2$child,transaction2$month_dummy,transaction2$bops,transaction2$product_category )
+
+cor(df) # Generates the correlation matrix
+vifcor(df) #  VIF scores are less than 3, no indication of multicollinearity
+
+#------------------------------------------------------------
+# PROBIT Model
+probit1<- glm(transaction2$return~transaction2$price+transaction2$female+transaction2$child+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$bops+transaction2$factor_prodcat, data=transaction2, family=binomial(link="probit")) # This is the command to run a probit regression 
+stargazer(probit1,
+          title="Regression Results", type="text", 
+          column.labels=c("Probit-1"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001))  
+
+# Model fit assessment 
+probit1a <- glm(transaction2$return~1, data=transaction2, family=binomial(link="probit")) # This is the command to run a logit on null model 
+
+lrtest(probit1, probit1a) #We compare the null model to our model to determine the model fit. The p-value is significant tells us that our model as a whole fits significantly better than the null model.
+
+
+# Obtain marginal effects
+a <- probitmfx(formula=transaction2$return~transaction2$price+transaction2$female+transaction2$child+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$bops+transaction2$factor_prodcat, data=transaction2) # We can generate the marginal effects with this command. The implementation of bops increases the probability of return by 0.0171, holding other variables at their means
+marginaleffects_probit <- a$mfxest[,1]
+marg.std.err_probit <- a$mfxest[,2]
+
+stargazer(probit1, 
+          omit=c("Constant"),
+          coef = list(marginaleffects_probit), se = list(marg.std.err_probit),
+          title="Marginal Effects", type="text", 
+          column.labels=c("Probit", "Logit"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+
+b <- probitmfx(formula=transaction2$return~transaction2$price+transaction2$female+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$bops+transaction2$factor_prodcat, data=transaction2, robust=TRUE) # We can obtain the marginal effects from a probit that uses robust standard errors. Note that marginal effects do not change, however, std. errors, and therefore, p-values change.
+rob.std.err <- b$mfxest[,2]
+
+stargazer(probit1, probit1,
+          se=list(marg.std.err_probit, rob.std.err),
+          omit=c("Constant"),
+          coef = list(marginaleffects_probit, marginaleffects_probit),
+          title="Regression Results", type="text", 
+          column.labels=c("Marginal Effects","Marg.Eff.w/RobStdEr" ),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001)) 
+
+
+# Measuring the predictive power of the probit
+pred = predict(probit1, data=transaction2, type="response") # predict probabilities
+
+return_prediction <- ifelse(pred >= 0.5,1,0) # If the predicted probability is greater than 0.5, then the predicted classification will be a return (return==1), otherwise it will be a no return (return==0) 
+misClasificError <- mean(return_prediction != transaction2$return) # count number of wrong classifications
+print(paste('Accuracy',1-misClasificError)) # calculate the correct classification rate. Accuracy is 0.906, meaning the model correctly determines the membership (being 0 vs 1) for 91% of all observations
+table(transaction2$return, pred>=0.5) # This generates the confusion matrix
+
+#------------------------------------------------------------
+# LINEAR PROBABILITY MODEL
+model4<- lm(transaction2$return~transaction2$price+transaction2$female+transaction2$child+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$bops+transaction2$factor_prodcat, data=transaction2) 
+
+stargazer(model4,  
+          title="Regression Results", type="text", 
+          column.labels=c("Model-4"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+
+confint(model4) #indicate 95% of confidence interval of bops is 0.0152-0.0184. Since coeffcient of marginal effect of probit model is 0.0170, which falls into the 95% CI. So we can use OSL model to capture endogeneity.
+
+#2sls model
+model4_2<- ivreg(transaction2$return~transaction2$price+transaction2$female+transaction2$child+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$bops+transaction2$factor_prodcat|transaction2$female+transaction2$child+transaction2$length_of_residence+transaction2$price+transaction2$age_band+transaction2$est_income_code+transaction2$factor_monthdummy+transaction2$factor_prodcat, data=transaction2)  # gives 2SLS estimator
+
+stargazer( model4_2, 
+          title="Regression Results", type="text", 
+          column.labels=c( "Model-2"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+summary(model4_2,diagnostics = TRUE)  # Sargan test is NA. We decided to conclude there is no endogeneity.
+
+#==========================================================
+## Load data for Q5 and Q6
+#==========================================================
+```{r}
+mydata5 <- read.dta13("online daily prod_cat sales-returns data.dta")
+```
+#==========================================================
+## Reorgainze, Subset and correct data for Q5 and Q6
+#==========================================================
+```{r}
+# Subset database for the specific research question 1, Date from Aug 1st 2010 to Sep 26th 2012
+mydata_selected5 <- subset(mydata5, day<788)
+
+#Check if there is missing data
+stargazer(mydata_selected5,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+
+#fill the NA (Missing values) in each column with the mean values
+mydata_selected5$avg_female[which(is.na(mydata_selected5$avg_female))] <- mean(mydata_selected5$avg_female,na.rm=TRUE)
+mydata_selected5$avg_age[which(is.na(mydata_selected5$avg_age))] <- mean(mydata_selected5$avg_age,na.rm=TRUE)
+mydata_selected5$avg_income[which(is.na(mydata_selected5$avg_income))] <- mean(mydata_selected5$avg_income,na.rm=TRUE)
+mydata_selected5$avg_childowner[which(is.na(mydata_selected5$avg_childowner))] <- mean(mydata_selected5$avg_childowner,na.rm=TRUE)
+
+#Create dummy variable for stores >>> store 2&6: D=1; store 5998: D=0
+mydata_selected5$store_dummy <- 1
+mydata_selected5$store_dummy[which(mydata_selected5$store_number == 5998)] <- 0
+
+#Create dummy variable for BIE time >>> before Aug 1st 2011 = 0; after Aug 1st 2011 = 1
+mydata_selected5$time_BIE_dummy <- 0
+mydata_selected5$time_BIE_dummy[which(mydata_selected5$day>365)] <- 1
+
+#Create factor variable for month_dummy
+ggplot(mydata_selected5,aes(x=month_dummy)) + geom_histogram(colour="green")
+is.factor(mydata_selected5$month_dummy)
+mydata_selected5$month_factor <- factor(mydata_selected5$month_dummy, levels = c("8","1","2","3","4","5","6","7","9","10","11","12"))
+is.factor(mydata_selected5$month_factor)
+
+#Create factor variable for product category
+ggplot(mydata_selected5,aes(x=product_category)) + geom_histogram(colour="green")
+is.factor(mydata_selected5$product_category)
+mydata_selected5$product_category_factor <- factor(mydata_selected5$product_category, levels = c("4","1","2","3","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21"))
+is.factor(mydata_selected5$product_category_factor)
+
+
+#Plot dependent variable Salesvalue
+ggplot(mydata_selected5,aes(x=salesvalue)) + geom_histogram(colour="green")
+
+#Convert dependent variable sales amount($ value) into log scale. Because there is 0 in sales,all sales values are added 1 and then transformed in to log scale
+mydata_selected5$salesvalue_modified <- mydata_selected5$salesvalue + 1
+mydata_selected5$logsale <- log(mydata_selected5$salesvalue_modified)
+stargazer(mydata_selected5,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+ggplot(mydata_selected5,aes(x=logsale)) + geom_histogram(colour="green")
+
+#Plot dependent variable ReturnValue
+ggplot(mydata_selected5,aes(x=returnvalue)) + geom_histogram(colour="green")
+
+#Convert dependent variable return amount($ value) into log scale. Because there is 0 in return, all return values are added 1 and then transformed in to log scale
+mydata_selected5$returnvalue_modified <- mydata_selected5$returnvalue + 1
+mydata_selected5$logreturn <- log(mydata_selected5$returnvalue_modified)
+stargazer(mydata_selected5,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+ggplot(mydata_selected5,aes(x=logreturn)) + geom_histogram(colour="green")
+
+#Check multicolinearity, no found
+df=mydata_selected5[c("store_dummy","time_BIE_dummy","avg_female","avg_age","avg_income","avg_homeowner","avg_residency","avg_childowner")]
+stargazer(df,type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+cor(df)
+vifcor(df)
+```
+#==========================================================
+## OLS Model & Quantity Model for Sales Q5
+#==========================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## OLS Model for Sales Q5
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+Model5=lm(log(salesvalue+1)~ time_BIE_dummy*store_dummy + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(Model5, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-5"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Check heteroscedasticity
+gqtest(Model5) # Significant then heteroscedasticity
+bptest(Model5) # Insignificant
+
+HWrobstder <- sqrt(diag(vcovHC(Model5, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model5, Model5,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors.
+
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Quantity Model for Sales Q5
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+#Poisson
+poisson5 <- glm(salesquantity~ time_BIE_dummy*store_dummy + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner,family = "poisson", data = mydata_selected5)
+
+stargazer(poisson5, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Poisson5"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Poisson model fit test
+poisson5a <- glm(salesquantity ~ 1, data = mydata_selected5)
+lrtest(poisson5, poisson5a) #Significant, then model fit
+
+#Check heteroscedasticity
+gqtest(poisson5)
+bptest(poisson5)
+
+HWrobstder <- sqrt(diag(vcovHC(poisson5, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(poisson5, poisson5,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Negative Binormial model
+negbin5 <- glm.nb(salesquantity~ time_BIE_dummy*store_dummy + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(negbin5, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-1"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#NB model fit test
+negbin5a <- glm.nb(salesquantity ~ 1, data = mydata_selected5)
+lrtest(negbin5, negbin5a) #significant, then model fit
+
+#Compare Poisson model and NB model, significant, then choose NB model
+lrtest(poisson5, negbin5)
+
+#Check heteroscedasticity
+gqtest(negbin5) #insignificant
+bptest(negbin5) #significant, then heteoscedasticity
+
+HWrobstder <- sqrt(diag(vcovHC(negbin5, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(negbin5, negbin5,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Obtain IRR
+stargazer(negbin5, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## OLS Model for Return Q5
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+Model5=lm(log(returnvalue+1)~ time_BIE_dummy*store_dummy + logsale + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(Model5, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-5"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Check heteroscedasticity
+gqtest(Model5) # Significant then heteroscedasticity
+bptest(Model5) # Insignificant
+
+HWrobstder <- sqrt(diag(vcovHC(Model5, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model5, Model5,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors.
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Quantity Model for Sales Q5
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```{r}
+#Poisson
+poisson5r <- glm(salesquantity~ time_BIE_dummy*store_dummy + salesquantity + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner,family = "poisson", data = mydata_selected5)
+
+stargazer(poisson5r, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Poisson5return"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Poisson model fit test
+poisson5ra <- glm(salesquantity ~ 1, data = mydata_selected5)
+lrtest(poisson5r, poisson5ra) #Significant, then model fit
+
+#Check heteroscedasticity
+gqtest(poisson5r)
+bptest(poisson5r)
+
+HWrobstder <- sqrt(diag(vcovHC(poisson5r, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(poisson5r, poisson5r,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Negative Binormial model
+negbin5r <- glm.nb(returnquantity~ time_BIE_dummy*store_dummy + salesquantity + month_factor + product_category_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(negbin5r, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Negbin5return"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#NB model fit test
+negbin5ra <- glm.nb(salesquantity ~ 1, data = mydata_selected5)
+lrtest(negbin5r, negbin5ra) #significant, then model fit
+
+#Compare Poisson model and NB model, significant, then choose NB model
+lrtest(poisson5r, negbin5r)
+
+#Check heteroscedasticity
+gqtest(negbin5r) #insignificant
+bptest(negbin5r) #significant, then heteoscedasticity
+
+HWrobstder <- sqrt(diag(vcovHC(negbin5r, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(negbin5r, negbin5r,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors. 
+
+#Obtain IRR
+stargazer(negbin5r, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+
+```
+#==========================================================
+## Q6 for Sales
+#==========================================================
+```{r}
+Model6=lm(logsale~ time_BIE_dummy*store_dummy*product_category_factor + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(Model6, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-6"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Check heteroscedasticity
+gqtest(Model6) # Significant then heteroscedasticity
+bptest(Model6) # Insignificant
+
+HWrobstder <- sqrt(diag(vcovHC(Model6, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model6, Model6,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors.
+
+#marginal effects
+meffects6 <- ggpredict(Model6, terms=c("time_BIE_dummy","store_dummy","product_category_factor")) # generates a tidy data frame  
+
+ggplot(meffects6,aes(x, predicted, colour=group)) + geom_line(size=1.3) + facet_wrap(~ facet) +
+    scale_colour_discrete(labels=c("Stores not implement BOPS", "Stores implement BOPS")) +
+    scale_x_continuous(breaks=c(0,1), labels=c("No BIE", "BIE")) +
+    theme(axis.title.x=element_blank()) # make the plot more self-readable
+
+#Define categories to be modeled from the marginal effect plots
+data_set <- c("1","2","4","9","10","14","17","21")
+#run the loop for the categories in order
+for (category in data_set){ 
+  #subset data to the category
+  mydata_selected6_x <- subset(mydata_selected5, product_category == category)
+  
+  print(category)
+  
+  #OLS model for the subset data
+  Model=lm(log(salesvalue+1)~ time_BIE_dummy*store_dummy + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected6_x)
+
+  #Check heteroscedasticity
+  gqtest(Model) # Significant then heteroscedasticity
+  bptest(Model) # Insignificant
+
+  HWrobstder <- sqrt(diag(vcovHC(Model, type="HC1"))) # produces Huber-White robust standard errors
+
+  stargazer(Model, Model,
+            se=list(NULL, HWrobstder),
+            title=paste("Sales Regression Results for Category",category), type="text",
+            column.labels=c("Normal SE", "HW-Robust SE"),
+            df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001), single.row=TRUE, align=TRUE)  # displays normal/HW robust standard errors.
+
+}
+```
+#==========================================================
+## Q6 for Return
+#==========================================================
+```{r}
+Model6r=lm(logreturn~ time_BIE_dummy*store_dummy*product_category_factor + logsale + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected5)
+
+stargazer(Model6r, 
+          title="Regression Results", type="text", 
+          column.labels=c("Model-6 return"),
+          df=FALSE, digits=2, star.cutoffs = c(0.05,0.01,0.001)) 
+
+#Check heteroscedasticity
+gqtest(Model6r) # Significant then heteroscedasticity
+bptest(Model6r) # significant
+
+HWrobstder <- sqrt(diag(vcovHC(Model6r, type="HC1"))) # produces Huber-White robust standard errors 
+
+stargazer(Model6r, Model6r,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))  # displays normal/HW robust standard errors.
+
+#marginal effects
+meffects6r <- ggpredict(Model6r, terms=c("time_BIE_dummy","store_dummy","product_category_factor")) # generates a tidy data frame  
+
+ggplot(meffects6r,aes(x, predicted, colour=group)) + geom_line(size=1.3) + facet_wrap(~ facet) +
+    scale_colour_discrete(labels=c("StoreS not implement BOPS", "StoreS implement BOPS")) +
+    scale_x_continuous(breaks=c(0,1), labels=c("No BIE", "BIE")) +
+    theme(axis.title.x=element_blank()) # make the plot more self-readable
+
+#Define categories to be modeled from the marginal effect plots
+data_set <- c("1","2","4","8","9","10","13","14","17","20","21")
+
+#run the loop for the categories in order
+for (category in data_set){ 
+  #subset data to the category
+  mydata_selected6_x <- subset(mydata_selected5, product_category == category)
+  
+  print(category)
+  
+  #OLS model for the subset data
+  Model=lm(log(returnvalue+1)~ time_BIE_dummy*store_dummy + logsale + month_factor + avg_female + avg_age + avg_income + avg_childowner, data = mydata_selected6_x)
+
+  #Check heteroscedasticity
+  gqtest(Model) # Significant then heteroscedasticity
+  bptest(Model) # Insignificant
+
+  HWrobstder <- sqrt(diag(vcovHC(Model, type="HC1"))) # produces Huber-White robust standard errors
+
+  stargazer(Model, Model,
+            se=list(NULL, HWrobstder),
+            title=paste("Return Regression Results for Category",category), type="text",
+            column.labels=c("Normal SE", "HW-Robust SE"),
+            df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001), single.row=TRUE, align=TRUE)  # displays normal/HW robust standard errors.
+
+}
+```

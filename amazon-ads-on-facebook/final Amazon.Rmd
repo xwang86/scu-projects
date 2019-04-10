@@ -1,0 +1,138 @@
+---
+title: "Case4"
+output: word_document
+---
+
+```{r}
+rm(list = ls())
+setwd("~/Documents/R/Case4")
+options(scipen = 9)
+library(stargazer)
+library(gdata)
+library(ggplot2)
+library(psych) 
+library(ggeffects)
+library(QuantPsyc)
+library(VIF)
+library(usdm)
+library(lmtest)
+library(multiwayvcov)
+library(sandwich)
+library(foreign)
+library(AER)
+library(aod)
+library(Rcpp)
+library(mfx)
+library(nnet)
+library(reshape2)
+library(msm)
+
+mydata = read.csv("Amazon.csv")
+stargazer(mydata, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+ggplot(mydata, aes(x=purchase)) + geom_histogram(colour="green") 
+ggplot(mydata, aes(x=log(purchase))) + geom_histogram(colour="green",binwidth = 0.1)
+mydata$log_purchase<-log(mydata$purchase)
+#multicolinearity, (NO)
+df=mydata[c("income","gender","facebookvisit","distance","cust_age","numoffriends","numofposts","PublicProfile")]
+cor(df)
+vif(df)
+#lm
+Model1=lm(log_purchase~income+gender+facebookvisit+distance+cust_age,data=mydata)
+#res=lm(log_purchase~income+gender+facebookvisit+distance+cust_age+numoffriends+numofposts+PublicProfile,data=mydata)
+stargazer(Model1,  
+          title="lm", type="text", 
+          column.labels=c("Model1"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+#2SLS
+df2=mydata[c("facebookvisit","purchase","numoffriends","numofposts","PublicProfile")]
+cor(df2) #colinear with facebookvisit, no correleation with purchase
+vif(df2)
+Model2=ivreg(log_purchase~income+gender+facebookvisit+distance+cust_age|income+gender+numoffriends+numofposts+distance+cust_age,data=mydata)
+summary(Model2,diagnostics= TRUE) #Wald test significant, model fit; F statistic(known as Weak instruments statistic) >10, then the instrument is relevant; sargan: insignifant(ok); Hausman:insignifcant, indicates no endogeneity, then OLS
+stargazer(Model1,Model2,  
+          title="Regression Results", type="text", 
+          column.labels=c("Model-1","Model-2"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+gqtest(Model1) #insignificant
+bptest(Model1)#significant, then heteroscedaticity
+contstder <- sqrt(diag(vcovHC(Model1, type = "const")))
+Hwrobustder <- sqrt(diag(vcovHC(Model1, type = "HC1")))
+stargazer(Model1,Model1,  
+          se = list(contstder,Hwrobustder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE","HW-Robust SE"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+#poisson 
+poisson1 <- glm(purchase ~ income+gender+facebookvisit+distance+cust_age, family="poisson", data=mydata)
+stargazer(poisson1,  
+          title="Regression Results", type="text", 
+          column.labels=c("Model-Poisson1"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+poisson1a <- glm(purchase~1, data=mydata, family="poisson") #possion model fit assessment
+lrtest(poisson1, poisson1a) #insignificant, not model fit
+stargazer(poisson1, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001)) #IRR
+gqtest(poisson1) # Goldfeld-Quandt test indicates no heteroscedasticity
+bptest(poisson1) # Breusch-Pagan test indicates heteroscedasticity
+HWrobstder <- sqrt(diag(vcovHC(poisson1, type="HC1")))
+stargazer(poisson1, poisson1,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))
+meffects <- ggpredict(poisson1, terms=("facebookvisit"))
+ggplot(meffects,aes(x, predicted)) + geom_point(size=3, colour="maroon") + geom_line() +
+   xlab("Facebook Ads Purchase") + ylab("Predicted purchase quantity") +
+   scale_x_continuous(breaks=c(1,2),labels=c("Non-facebook Purchase", "Facebook Purchase"))
+#negative binomial
+negbin1 <- glm.nb(purchase ~ income+gender+facebookvisit+distance+cust_age, data = mydata) 
+
+stargazer(negbin1,  
+          title="Regression Results", type="text", 
+          column.labels=c("Model-NB"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001))
+negbin1a <- glm.nb(purchase ~ 1, data = mydata) 
+lrtest(negbin1, negbin1a) #significant, model fit
+lrtest(poisson1, negbin1) #Compare, significant, then NB
+stargazer(negbin1, 
+          apply.coef = exp, t.auto=F, p.auto = F,
+          title="Regression Results", type="text", 
+          column.labels=c("IRRs"),
+          df=FALSE, digits=4, star.cutoffs = c(0.05,0.01,0.001)) 
+gqtest(negbin1) #insiginificant
+bptest(negbin1)#significant
+HWrobstder <- sqrt(diag(vcovHC(negbin1, type="HC1")))
+stargazer(negbin1, negbin1,  
+          se=list(NULL, HWrobstder),
+          title="Regression Results", type="text", 
+          column.labels=c("Normal SE", "HW-Robust SE"),
+          df=FALSE, digits=3, star.cutoffs = c(0.05,0.01,0.001))
+
+meffects2 <- ggpredict(negbin1, terms=("facebookvisit"))
+ggplot(meffects2,aes(x, predicted)) + geom_point(size=3, colour="maroon") + geom_line() +
+   xlab("Facebook Ads Purchase") + ylab("Predicted purchase quantity") +
+   scale_x_continuous(breaks=c(1,2),labels=c("Non-facebook Purchase", "Facebook Purchase"))
+``` 
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

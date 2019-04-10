@@ -1,0 +1,146 @@
+<html><head>
+<title>Schema Report for database: Hotel</title>
+<style>
+        td,th {
+        text-align:left;
+        vertical-align:middle;
+        }
+        table {
+        border-collapse: collapse;
+        border: 1px solid;
+        }
+        caption, th, td {
+        padding: .2em .8em;
+        border: 1px solid #000000;
+        }
+        caption {
+        background: #D3D3D3;
+        font-weight: bold;
+        font-size: 1.1em;
+        }
+        th {
+        font-weight: bold;
+        background: #000000;
+        color: white;
+        }
+        td {
+        background: #FFFFFF;
+        }
+        </style>
+      </head>
+     <body>
+<h1>Schema Report for database: Hotel</h1>
+<a id="home">Table List </a><br /><ul>
+<li><a href="#Booking">Booking </a></li>
+<li><a href="#Guest">Guest </a></li>
+<li><a href="#Room">Room </a></li>
+<li><a href="#Room_Booking">Room_Booking </a></li>
+<li><a href="#Room_Rate">Room_Rate </a></li>
+<li><a href="#Room_Type">Room_Type </a></li>
+</ul>
+<a id="Booking"></a><table style="width:100%"><caption>Table: Booking </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Booking_ID</td><td>INT(13)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Special_request</td><td>VARCHAR(11)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+<tr><td>Guest_ID</td><td>INT(13)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+<a id="Guest"></a><table style="width:100%"><caption>Table: Guest </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Guest_ID</td><td>INT(13)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Guest_name</td><td>CHAR(30)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+<tr><td>Guest_address</td><td>VARCHAR(40)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+<tr><td>Guest_city</td><td>CHAR(25)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+<tr><td>Guest_state</td><td>CHAR(25)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+<tr><td>Guest_zipcode</td><td>VARCHAR(11)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+<tr><td>Guest_country</td><td>CHAR(25)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+<a id="Room"></a><table style="width:100%"><caption>Table: Room </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Room_ID</td><td>INT(11)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Room_type_ID</td><td>INT(11)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+<a id="Room_Booking"></a><table style="width:100%"><caption>Table: Room_Booking </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Date_from</td><td>DATE</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Date_to</td><td>DATE</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Price</td><td>DECIMAL(5,0)</td><td>No</td><td>No</td><td>No</td><td>'0'</td><td></td></tr>
+<tr><td>Room_ID</td><td>INT(11)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Booking_ID</td><td>INT(11)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+<tr><td>Create_date</td><td>DATETIME</td><td>Yes</td><td>No</td><td>No</td><td>CURRENT_TIMESTAMP</td><td></td></tr>
+<tr><td>Modified_date</td><td>DATETIME</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+<a id="Room_Rate"></a><table style="width:100%"><caption>Table: Room_Rate </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Date_from</td><td>DATE</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Date_to</td><td>DATE</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Room_rate</td><td>DECIMAL(5,0)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+<tr><td>Room_type_ID</td><td>INT(11)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Rate_type</td><td>VARCHAR(10)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+<a id="Room_Type"></a><table style="width:100%"><caption>Table: Room_Type </caption>
+<tr><td>Table Comments</td><td colspan="6"></td></tr>
+<tr><td colspan="7">Columns</td></tr>
+        <tr>
+        <th>Name</th>
+        <th>Data Type</th>
+        <th>Nullable</th>
+        <th>PK</th>
+        <th>FK</th>
+        <th>Default</th>
+        <th>Comment</th>
+        </tr>
+<tr><td>Room_type_ID</td><td>INT(11)</td><td>Yes</td><td>Yes</td><td>No</td><td></td><td></td></tr>
+<tr><td>Room_type_name</td><td>VARCHAR(11)</td><td>Yes</td><td>No</td><td>No</td><td></td><td></td></tr>
+<tr><td>Room_type_description</td><td>VARCHAR(11)</td><td>No</td><td>No</td><td>No</td><td>NULL</td><td></td></tr>
+</table><a href="#home">Table List </a></br>
+</body></html>
